@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     loadLeaderboard();
     updatePlayerDisplay();
+    loadSavedUser(); // Загружаем сохраненного пользователя
 });
 
 // Инициализация шахматной доски
@@ -82,6 +83,45 @@ function setupEventListeners() {
 
     // Регистрация пользователя
     document.getElementById('register-btn').addEventListener('click', registerUser);
+
+    // Кнопка выхода из аккаунта
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logoutUser);
+    }
+
+    // Регистрация по нажатию Enter в поле ввода
+    document.getElementById('username').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            registerUser();
+        }
+    });
+
+    // Кнопка Правила
+    const rulesBtn = document.getElementById('rules-btn');
+    if (rulesBtn) {
+        rulesBtn.addEventListener('click', function() {
+            document.getElementById('rules-modal').style.display = 'flex';
+        });
+    }
+
+    // Закрытие модального окна
+    const closeModal = document.getElementById('close-modal');
+    if (closeModal) {
+        closeModal.addEventListener('click', function() {
+            document.getElementById('rules-modal').style.display = 'none';
+        });
+    }
+
+    // Закрытие по клику вне модального окна
+    const modal = document.getElementById('rules-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    }
 }
 
 // Начало игры
@@ -769,11 +809,63 @@ function registerUser() {
     }
 
     gameState.currentUser = username;
+
+    // Сохраняем пользователя в localStorage
+    localStorage.setItem('chessTrainerCurrentUser', username);
+
+    // Обновляем интерфейс
+    updateUserInterface(username);
+
+    showMessage(`Добро пожаловать, ${username}!`);
+}
+
+// Загрузка сохраненного пользователя
+function loadSavedUser() {
+    const savedUser = localStorage.getItem('chessTrainerCurrentUser');
+
+    if (savedUser) {
+        gameState.currentUser = savedUser;
+        updateUserInterface(savedUser);
+    }
+}
+
+// Обновление интерфейса пользователя
+function updateUserInterface(username) {
     document.getElementById('current-user').textContent = username;
     document.getElementById('user-info').style.display = 'block';
     document.getElementById('username').value = '';
 
-    showMessage(`Добро пожаловать, ${username}!`);
+    // Скрываем форму регистрации
+    const userForm = document.querySelector('.user-form');
+    if (userForm) {
+        userForm.style.display = 'none';
+    }
+}
+
+// Выход из аккаунта
+function logoutUser() {
+    // Удаляем пользователя из localStorage
+    localStorage.removeItem('chessTrainerCurrentUser');
+
+    // Сбрасываем состояние
+    gameState.currentUser = null;
+
+    // Останавливаем игру, если она идет
+    if (gameState.isPlaying) {
+        resetGame();
+    }
+
+    // Показываем форму регистрации
+    const userForm = document.querySelector('.user-form');
+    if (userForm) {
+        userForm.style.display = 'flex';
+    }
+
+    // Скрываем информацию о пользователе
+    document.getElementById('user-info').style.display = 'none';
+    document.getElementById('current-user').textContent = '';
+
+    showMessage('Вы вышли из аккаунта');
 }
 
 // Обновление отображения текущего игрока

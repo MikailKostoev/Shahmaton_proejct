@@ -9,84 +9,99 @@
 </head>
 
 <body>
-    <div class="container">
-        <header>
-            <h1>Шахматный тренажер "Blindfold"</h1>
-            <p>Развивайте навыки расчета вариантов и визуализации!</p>
-        </header>
+    <!-- Верхняя панель со статистикой -->
+    <div class="top-stats">
+        <div class="stat-box-top">
+            <div class="stat-label">Уровень</div>
+            <div class="stat-value-top" id="level">1</div>
+        </div>
+        <div class="stat-box-top">
+            <div class="stat-label">Ход</div>
+            <div class="stat-value-top" id="move">0/20</div>
+        </div>
+        <div class="stat-box-top">
+            <div class="stat-label">Ошибки</div>
+            <div class="stat-value-top" id="errors">0/3</div>
+        </div>
+        <div class="stat-box-top">
+            <div class="stat-label">Время</div>
+            <div class="stat-value-top" id="timer">00:00</div>
+        </div>
+        <button class="btn-rules" id="rules-btn">Правила</button>
+    </div>
 
-        <div class="game-container">
-            <div class="board-container">
-                <div id="chessboard"></div>
-                <div class="current-player" id="current-player">
-                    Текущий ход: <span id="player-side">белые</span>
+    <!-- Основной контейнер -->
+    <div class="main-container">
+        <!-- Левая панель -->
+        <div class="sidebar">
+            <!-- Учетная запись -->
+            <div class="user-management">
+                <h3>Учетная запись</h3>
+                <div class="user-form">
+                    <input type="text" id="username" placeholder="Введите имя">
+                    <button id="register-btn">Зарегистрироваться</button>
+                </div>
+                <div id="user-info" style="display: none;">
+                    <p style="margin-bottom: 10px;">
+                        👤 Игрок: <strong id="current-user"></strong>
+                    </p>
+                    <button id="logout-btn" class="btn btn-secondary" style="width: 100%;">
+                        Выйти
+                    </button>
                 </div>
             </div>
 
-            <div class="controls">
-                <div class="mode-selector">
-                    <button class="mode-btn active" data-mode="blindfold">Вслепую</button>
-                    <button class="mode-btn" data-mode="beginner">Для начинающих</button>
+            <!-- Таблица рекордов -->
+            <div class="leaderboard">
+                <h3>🏆 Таблица рекордов</h3>
+                <div id="leaderboard-list"></div>
+                <div class="legend">
+                    <div><strong>Значки:</strong></div>
+                    <div>⭐ - Идеальная игра (0 ошибок, без подсказок)</div>
+                    <div>😎 - Режим "Вслепую"</div>
+                    <div>🎯 - 100% точность</div>
                 </div>
+            </div>
+        </div>
 
-                <div class="stats">
-                    <div class="stat-box">
-                        <div>Уровень</div>
-                        <div class="stat-value" id="level">1</div>
-                    </div>
-                    <div class="stat-box">
-                        <div>Ход</div>
-                        <div class="stat-value" id="move">1/20</div>
-                    </div>
-                    <div class="stat-box">
-                        <div>Ошибки</div>
-                        <div class="stat-value" id="errors">0/3</div>
-                    </div>
-                    <div class="stat-box">
-                        <div>Время</div>
-                        <div class="stat-value" id="timer">00:00</div>
-                    </div>
-                </div>
+        <!-- Центральная часть с доской -->
+        <div class="game-area">
+            <!-- Кнопки режимов НАД доской -->
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="blindfold">Вслепую</button>
+                <button class="mode-btn" data-mode="beginner">Для начинающих</button>
+            </div>
 
-                <div class="actions">
-                    <button class="btn btn-primary" id="start-btn">Начать игру</button>
-                    <button class="btn btn-secondary" id="hint-btn" disabled>Подсказка</button>
-                    <button class="btn btn-danger" id="reset-btn">Сбросить</button>
-                </div>
+            <div class="board-wrapper">
+                <div id="chessboard"></div>
+            </div>
 
-                <div class="game-info">
-                    <h3>Правила движения фигур</h3>
-                    <div class="rules">
-                        <div class="rule">♙ Пешка: вперед на 1 клетку, бьет по диагонали</div>
-                        <div class="rule">♘ Конь: буквой "Г" (2+1 клетки)</div>
-                        <div class="rule">♗ Слон: по диагонали</div>
-                        <div class="rule">♖ Ладья: по горизонтали и вертикали</div>
-                        <div class="rule">♕ Ферзь: в любом направлении</div>
-                        <div class="rule">♔ Король: на 1 клетку в любом направлении</div>
-                    </div>
-                </div>
+            <!-- Текущий ход ПОД доской -->
+            <div class="current-player-bottom" id="current-player">
+                Текущий ход: <span id="player-side">белые</span>
+            </div>
 
-                <div class="user-management">
-                    <h3>Учетная запись</h3>
-                    <div class="user-form">
-                        <input type="text" id="username" placeholder="Введите имя">
-                        <button id="register-btn">Зарегистрироваться</button>
-                    </div>
-                    <div id="user-info" style="display: none;">
-                        <p>Игрок: <span id="current-user"></span></p>
-                    </div>
-                </div>
+            <!-- Нижние кнопки -->
+            <div class="bottom-buttons">
+                <button class="btn-bottom btn-start" id="start-btn">Начать игру</button>
+                <button class="btn-bottom btn-hint" id="hint-btn" disabled>Подсказка</button>
+                <button class="btn-bottom btn-reset" id="reset-btn">Сбросить</button>
+            </div>
+        </div>
+    </div>
 
-                <div class="leaderboard">
-                    <h3>🏆 Таблица рекордов</h3>
-                    <div id="leaderboard-list"></div>
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 0.8em; color: rgba(255,255,255,0.6);">
-                        <div><strong>Значки:</strong></div>
-                        <div>⭐ - Идеальная игра (0 ошибок, без подсказок)</div>
-                        <div>😎 - Режим "Вслепую"</div>
-                        <div>🎯 - 100% точность</div>
-                    </div>
-                </div>
+    <!-- Модальное окно с правилами -->
+    <div class="modal" id="rules-modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" id="close-modal">&times;</span>
+            <h2>Правила движения фигур</h2>
+            <div class="rules">
+                <div class="rule">♙ Пешка: вперед на 1 клетку, бьет по диагонали</div>
+                <div class="rule">♘ Конь: буквой "Г" (2+1 клетки)</div>
+                <div class="rule">♗ Слон: по диагонали</div>
+                <div class="rule">♖ Ладья: по горизонтали и вертикали</div>
+                <div class="rule">♕ Ферзь: в любом направлении</div>
+                <div class="rule">♔ Король: на 1 клетку в любом направлении</div>
             </div>
         </div>
     </div>
