@@ -14,26 +14,9 @@ const CHESS_PIECES = {
     'bP': '♟'
 };
 
-let gameState = {
-    mode: 'blindfold',
-    level: 1,
-    currentMove: 0,
-    maxMoves: 20,
-    errors: 0,
-    maxErrors: 3,
-    time: 0,
-    timerInterval: null,
-    isPlaying: false,
-    currentPosition: [],
-    activePiece: null,
-    activePieceStartPos: null, // Начальная позиция активной фигуры для анимации
-    targetPiece: null,
-    pieces: [],
-    hintUsed: false,
-    currentUser: null,
-    currentPlayer: 'w', // w для белых, b для черных
-    debugMode: false // Режим отладки для проверки взаимодействий
-};
+// gameState теперь инициализируется в index.html ДО загрузки Firebase
+// Используем глобальный объект
+let gameState = window.gameState;
 
 // Инициализация игры
 document.addEventListener('DOMContentLoaded', function() {
@@ -41,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     loadLeaderboard();
     updatePlayerDisplay();
-    loadSavedUser(); // Загружаем сохраненного пользователя
+    // Firebase Auth теперь управляет состоянием пользователя автоматически
 });
 
 // Инициализация шахматной доски
@@ -81,22 +64,6 @@ function setupEventListeners() {
     // Кнопка сброса
     document.getElementById('reset-btn').addEventListener('click', resetGame);
 
-    // Регистрация пользователя
-    document.getElementById('register-btn').addEventListener('click', registerUser);
-
-    // Кнопка выхода из аккаунта
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logoutUser);
-    }
-
-    // Регистрация по нажатию Enter в поле ввода
-    document.getElementById('username').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            registerUser();
-        }
-    });
-
     // Кнопка Правила
     const rulesBtn = document.getElementById('rules-btn');
     if (rulesBtn) {
@@ -126,10 +93,24 @@ function setupEventListeners() {
 
 // Начало игры
 function startGame() {
-    if (!gameState.currentUser) {
-        showMessage('Пожалуйста, зарегистрируйтесь перед началом игры!');
+    console.log('🎮 Попытка начать игру. gameState:', {
+        currentUser: gameState.currentUser,
+        userId: gameState.userId
+    });
+    
+    if (!gameState.currentUser || !gameState.userId) {
+        console.warn('❌ Пользователь не авторизован');
+        showMessage('⚠️ Войдите в систему, чтобы начать игру и сохранять рекорды!');
+        // Открываем окно аутентификации
+        if (window.firebaseAuthModule && window.firebaseAuthModule.openAuthModal) {
+            setTimeout(() => {
+                window.firebaseAuthModule.openAuthModal();
+            }, 1500);
+        }
         return;
     }
+    
+    console.log('✅ Пользователь авторизован, начинаем игру');
 
     resetGameState();
     gameState.isPlaying = true;
@@ -725,6 +706,12 @@ function gameOver() {
 
 // Расчет очков (улучшенная формула)
 function calculateScore() {
+    // Проверка аутентификации
+    if (!gameState.currentUser || !gameState.userId) {
+        return 0;
+    }
+    
+
     // ═══════════════════════════════════════
     // 1. Базовые очки за уровень
     // ═══════════════════════════════════════
@@ -800,74 +787,6 @@ function calculateScore() {
     return finalScore;
 }
 
-// Регистрация пользователя
-function registerUser() {
-    const username = document.getElementById('username').value.trim();
-    if (!username) {
-        showMessage('Введите имя пользователя!');
-        return;
-    }
-
-    gameState.currentUser = username;
-
-    // Сохраняем пользователя в localStorage
-    localStorage.setItem('chessTrainerCurrentUser', username);
-
-    // Обновляем интерфейс
-    updateUserInterface(username);
-
-    showMessage(`Добро пожаловать, ${username}!`);
-}
-
-// Загрузка сохраненного пользователя
-function loadSavedUser() {
-    const savedUser = localStorage.getItem('chessTrainerCurrentUser');
-
-    if (savedUser) {
-        gameState.currentUser = savedUser;
-        updateUserInterface(savedUser);
-    }
-}
-
-// Обновление интерфейса пользователя
-function updateUserInterface(username) {
-    document.getElementById('current-user').textContent = username;
-    document.getElementById('user-info').style.display = 'block';
-    document.getElementById('username').value = '';
-
-    // Скрываем форму регистрации
-    const userForm = document.querySelector('.user-form');
-    if (userForm) {
-        userForm.style.display = 'none';
-    }
-}
-
-// Выход из аккаунта
-function logoutUser() {
-    // Удаляем пользователя из localStorage
-    localStorage.removeItem('chessTrainerCurrentUser');
-
-    // Сбрасываем состояние
-    gameState.currentUser = null;
-
-    // Останавливаем игру, если она идет
-    if (gameState.isPlaying) {
-        resetGame();
-    }
-
-    // Показываем форму регистрации
-    const userForm = document.querySelector('.user-form');
-    if (userForm) {
-        userForm.style.display = 'flex';
-    }
-
-    // Скрываем информацию о пользователе
-    document.getElementById('user-info').style.display = 'none';
-    document.getElementById('current-user').textContent = '';
-
-    showMessage('Вы вышли из аккаунта');
-}
-
 // Обновление отображения текущего игрока
 function updatePlayerDisplay() {
     const playerSide = document.getElementById('player-side');
@@ -877,38 +796,87 @@ function updatePlayerDisplay() {
         '1px 1px 2px rgba(0,0,0,0.8)' : '1px 1px 2px rgba(255,255,255,0.8)';
 }
 
-// Обновление таблицы рекордов
-function updateLeaderboard(user, score, level) {
-    let leaderboard = JSON.parse(localStorage.getItem('chessTrainerLeaderboard') || '[]');
-
-    // Сохраняем полную информацию о результате
-    const entry = {
-        user: user,
-        score: score,
-        level: level,
-        date: new Date().toLocaleDateString(),
+// Обновление таблицы рекордов (теперь использует Firestore)
+async function updateLeaderboard(user, score, level) {
+    console.log('💾 Сохранение рекорда:', { user, score, level });
+    
+    const gameData = {
+        userId: gameState.userId,
         time: gameState.time,
         mode: gameState.mode,
         errors: gameState.errors,
         hintUsed: gameState.hintUsed,
-        accuracy: Math.round((gameState.currentMove / gameState.maxMoves) * 100),
-        isPerfect: gameState.errors === 0 && !gameState.hintUsed
+        currentMove: gameState.currentMove,
+        maxMoves: gameState.maxMoves
+    };
+
+    // Пытаемся сохранить в Firestore
+    if (window.firebaseLeaderboard && window.firebaseLeaderboard.saveScoreToFirestore) {
+        const success = await window.firebaseLeaderboard.saveScoreToFirestore(
+            user,
+            gameState.userId,
+            score,
+            level,
+            gameData
+        );
+        
+        if (success) {
+            console.log('✅ Рекорд сохранен в глобальную таблицу Firestore');
+        } else {
+            console.log('⚠️ Рекорд сохранен локально (Firestore недоступен)');
+        }
+    } else {
+        console.warn('⚠️ Firestore модуль не загружен, используем localStorage');
+        // Fallback на старый метод localStorage
+        saveToLocalStorageFallback(user, score, level, gameData);
+    }
+}
+
+// Fallback функция для сохранения в localStorage
+function saveToLocalStorageFallback(user, score, level, gameData) {
+    let leaderboard = JSON.parse(localStorage.getItem('chessTrainerLeaderboard') || '[]');
+
+    const entry = {
+        user: user,
+        userId: gameData.userId || 'local',
+        score: score,
+        level: level,
+        date: new Date().toLocaleDateString(),
+        timestamp: Date.now(),
+        time: gameData.time,
+        mode: gameData.mode,
+        errors: gameData.errors,
+        hintUsed: gameData.hintUsed,
+        accuracy: Math.round((gameData.currentMove / gameData.maxMoves) * 100),
+        isPerfect: gameData.errors === 0 && !gameData.hintUsed
     };
 
     leaderboard.push(entry);
-
-    // Сортируем по убыванию очков
     leaderboard.sort((a, b) => b.score - a.score);
-
-    // Ограничиваем топ-20 (больше записей для истории)
-    leaderboard = leaderboard.slice(0, 20);
+    leaderboard = leaderboard.slice(0, 50);
 
     localStorage.setItem('chessTrainerLeaderboard', JSON.stringify(leaderboard));
+    console.log('💾 Рекорд сохранен в localStorage');
+    
     loadLeaderboard();
 }
 
-// Загрузка таблицы рекордов
+// Загрузка таблицы рекордов (теперь из Firestore)
 function loadLeaderboard() {
+    console.log('📖 Загрузка глобальной таблицы рекордов...');
+    
+    // Пытаемся загрузить из Firestore
+    if (window.firebaseLeaderboard && window.firebaseLeaderboard.loadGlobalLeaderboard) {
+        window.firebaseLeaderboard.loadGlobalLeaderboard();
+    } else {
+        console.warn('⚠️ Firestore модуль не загружен, используем localStorage');
+        // Fallback на localStorage
+        loadFromLocalStorageFallback();
+    }
+}
+
+// Fallback функция для загрузки из localStorage
+function loadFromLocalStorageFallback() {
     const leaderboard = JSON.parse(localStorage.getItem('chessTrainerLeaderboard') || '[]');
     const leaderboardList = document.getElementById('leaderboard-list');
     leaderboardList.innerHTML = '';
@@ -918,26 +886,22 @@ function loadLeaderboard() {
         return;
     }
 
-    // Показываем только топ-10 в компактном режиме
     const topEntries = leaderboard.slice(0, 10);
 
     topEntries.forEach((entry, index) => {
         const item = document.createElement('div');
         item.className = 'leaderboard-item';
 
-        // Медали для топ-3
         let medal = '';
         if (index === 0) medal = '🥇 ';
         else if (index === 1) medal = '🥈 ';
         else if (index === 2) medal = '🥉 ';
 
-        // Иконки достижений
         let badges = '';
         if (entry.isPerfect) badges += '⭐ ';
         if (entry.mode === 'blindfold') badges += '😎 ';
         if (entry.accuracy === 100) badges += '🎯 ';
 
-        // Форматирование времени
         const minutes = Math.floor(entry.time / 60);
         const seconds = entry.time % 60;
         const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -952,7 +916,6 @@ function loadLeaderboard() {
             </div>
         `;
 
-        // Добавляем специальный стиль для топ-3
         if (index < 3) {
             item.style.background = 'rgba(255, 215, 0, 0.1)';
             item.style.borderLeft = '3px solid #FFD700';
@@ -995,3 +958,6 @@ function showMessage(text) {
         messageEl.style.display = 'none';
     }, 3000);
 }
+
+// Делаем showMessage глобальной для использования в firebase-auth.js
+window.showMessage = showMessage;

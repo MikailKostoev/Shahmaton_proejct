@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Шахматный тренажер "Blindfold"</title>
     <link rel="stylesheet" href="css/style.css">
+    <!-- Убираем ошибку 404 для favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♟️</text></svg>">
 </head>
 
 <body>
@@ -37,10 +39,14 @@
             <!-- Учетная запись -->
             <div class="user-management">
                 <h3>Учетная запись</h3>
-                <div class="user-form">
-                    <input type="text" id="username" placeholder="Введите имя">
-                    <button id="register-btn">Зарегистрироваться</button>
+                <!-- Кнопка входа (показывается когда не залогинен) -->
+                <div id="login-prompt">
+                    <button id="open-login-btn" class="btn-login">🔐 Войти</button>
+                    <p style="text-align: center; margin-top: 10px; font-size: 0.9rem; opacity: 0.8;">
+                        Войдите, чтобы сохранять рекорды
+                    </p>
                 </div>
+                <!-- Информация о пользователе (показывается когда залогинен) -->
                 <div id="user-info" style="display: none;">
                     <p style="margin-bottom: 10px;">
                         👤 Игрок: <strong id="current-user"></strong>
@@ -106,10 +112,118 @@
         </div>
     </div>
 
+    <!-- Модальное окно аутентификации -->
+    <div class="auth-modal" id="auth-modal" style="display: none;">
+        <div class="auth-content">
+            <span class="close-auth" id="close-auth">&times;</span>
+
+            <h2 class="auth-title">Шахматный тренажер "Blindfold"</h2>
+            <p class="auth-subtitle">Развивайте навыки расчета вариантов и визуализации!</p>
+
+            <!-- Форма входа -->
+            <div id="login-form" class="auth-form">
+                <div class="input-group">
+                    <input type="text" id="login-username" placeholder="Логин" class="auth-input">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="пароль" class="auth-input">
+                    <span class="toggle-password" id="toggle-login-password">👁️</span>
+                </div>
+                <button id="login-submit-btn" class="auth-btn">Войти</button>
+                <p class="auth-switch">
+                    Ещё нет профиля? <a href="#" id="show-register">Пройдите Регистрацию</a>
+                </p>
+            </div>
+
+            <!-- Форма регистрации -->
+            <div id="register-form" class="auth-form" style="display: none;">
+                <div class="input-group">
+                    <input type="text" id="register-username" placeholder="Логин" class="auth-input">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="register-password" placeholder="пароль" class="auth-input">
+                    <span class="toggle-password" id="toggle-register-password">👁️</span>
+                </div>
+                <button id="register-submit-btn" class="auth-btn">Регистрация</button>
+                <p class="auth-switch">
+                    Уже есть профиль? <a href="#" id="show-login">Войти</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div class="message" id="message"></div>
+
+    <!-- Инициализируем gameState первым делом -->
+    <script>
+        // Создаем gameState глобально ДО загрузки Firebase
+        window.gameState = {
+            mode: 'blindfold',
+            level: 1,
+            currentMove: 0,
+            maxMoves: 20,
+            errors: 0,
+            maxErrors: 3,
+            time: 0,
+            timerInterval: null,
+            isPlaying: false,
+            currentPosition: [],
+            activePiece: null,
+            activePieceStartPos: null,
+            targetPiece: null,
+            pieces: [],
+            hintUsed: false,
+            currentUser: null,
+            userId: null,
+            currentPlayer: 'w',
+            debugMode: false
+        };
+        console.log('🎮 gameState инициализирован');
+    </script>
 
     <script src="js/chess-rules.js"></script>
     <script src="js/script.js"></script>
+
+    <!-- Firebase SDK -->
+    <!-- prettier-ignore -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-analytics.js";
+        import { getAuth } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAtjyskpNX37pXLWuq5SkU7YhLwqFHLC_o",
+            authDomain: "shahmaton-dd992.firebaseapp.com",
+            projectId: "shahmaton-dd992",
+            storageBucket: "shahmaton-dd992.firebasestorage.app",
+            messagingSenderId: "921991403571",
+            appId: "1:921991403571:web:63865e723854919b31eb46",
+            measurementId: "G-FPL3SR81Z7"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Сохраняем глобально для использования в других скриптах
+        window.firebaseApp = app;
+        window.firebaseAnalytics = analytics;
+        window.firebaseAuth = auth;
+        window.firebaseDB = db;
+
+        console.log("Firebase успешно инициализирован! ✅");
+    </script>
+
+    <!-- Firebase Auth Script -->
+    <script src="js/firebase-auth.js" type="module"></script>
+    
+    <!-- Firebase Leaderboard Script -->
+    <script src="js/firebase-leaderboard.js" type="module"></script>
 </body>
 
 </html>
