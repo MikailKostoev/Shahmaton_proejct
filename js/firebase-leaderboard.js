@@ -34,7 +34,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     await waitForFirebase();
     console.log('🔥 Firestore готов для работы с таблицей рекордов');
     
-    // Загружаем таблицу рекордов при старте
+    // Leaderboard модуль загружен
+    if (window.loadingProgress) {
+        window.loadingProgress.update();
+    }
+    
+    // Загружаем таблицу рекордов при старте (данные загрузятся асинхронно)
     loadGlobalLeaderboard();
 });
 
@@ -89,8 +94,8 @@ export async function saveScoreToFirestore(user, userId, score, level, gameData)
 // ============================================
 export async function loadGlobalLeaderboard() {
     if (!db) {
-        console.warn('⚠️ Firestore не готов, загружаем из localStorage');
-        loadFromLocalStorage();
+        console.warn('⚠️ Firestore не готов, ждем инициализации...');
+        // НЕ вызываем loadFromLocalStorage, ждем Firestore
         return;
     }
 
@@ -121,6 +126,12 @@ export async function loadGlobalLeaderboard() {
 
             console.log('📊 Получено рекордов из Firestore:', leaderboard.length);
             displayLeaderboard(leaderboard);
+            
+            // Уведомляем систему загрузки, что данные получены ИЗ FIRESTORE
+            if (window.loadingProgress && !window.loadingProgress.leaderboardDataLoaded) {
+                console.log('✅ Данные из Firestore загружены, уведомляем систему загрузки');
+                window.loadingProgress.setLeaderboardDataLoaded();
+            }
         }, (error) => {
             console.error('❌ Ошибка загрузки рекордов:', error);
             console.error('Код ошибки:', error.code);
@@ -248,8 +259,14 @@ function saveToLocalStorage(user, score, level, gameData) {
 
 function loadFromLocalStorage() {
     const leaderboard = JSON.parse(localStorage.getItem('chessTrainerLeaderboard') || '[]');
-    console.log('📖 Загрузка из localStorage:', leaderboard.length, 'записей');
+    console.log('📖 Загрузка из localStorage (fallback):', leaderboard.length, 'записей');
     displayLeaderboard(leaderboard);
+    
+    // Уведомляем систему загрузки, что данные получены (только если Firestore недоступен)
+    if (window.loadingProgress && !window.loadingProgress.leaderboardDataLoaded) {
+        console.log('✅ Данные из localStorage загружены, уведомляем систему загрузки');
+        window.loadingProgress.setLeaderboardDataLoaded();
+    }
 }
 
 // Делаем функции доступными глобально

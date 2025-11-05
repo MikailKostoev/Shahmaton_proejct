@@ -33,6 +33,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     await waitForFirebase();
     setupAuthListeners();
     setupAuthStateObserver();
+    
+    // Auth загружен
+    if (window.loadingProgress) {
+        window.loadingProgress.update();
+    }
 });
 
 // ============================================
