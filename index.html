@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Шахматный тренажер "Blindfold"</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -76,8 +78,14 @@
                 </div>
 
                 <div class="leaderboard">
-                    <h3>Таблица рекордов</h3>
+                    <h3>🏆 Таблица рекордов</h3>
                     <div id="leaderboard-list"></div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 0.8em; color: rgba(255,255,255,0.6);">
+                        <div><strong>Значки:</strong></div>
+                        <div>⭐ - Идеальная игра (0 ошибок, без подсказок)</div>
+                        <div>😎 - Режим "Вслепую"</div>
+                        <div>🎯 - 100% точность</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -88,4 +96,5 @@
     <script src="js/chess-rules.js"></script>
     <script src="js/script.js"></script>
 </body>
+
 </html>

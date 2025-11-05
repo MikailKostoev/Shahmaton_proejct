@@ -644,7 +644,26 @@ function levelComplete() {
 
     // Вычисляем очки
     const score = calculateScore();
-    showMessage(`Уровень ${gameState.level} пройден! Очки: ${score}`);
+
+    // Формируем детальное сообщение о результатах
+    let message = `🎉 УРОВЕНЬ ${gameState.level} ПРОЙДЕН!\n\n`;
+    message += `💰 ИТОГО: ${score} очков\n\n`;
+    message += `📊 Детали:\n`;
+
+    const breakdown = gameState.lastScoreBreakdown;
+    if (breakdown) {
+        message += `• Базовые очки: +${breakdown.baseScore}\n`;
+        if (breakdown.timeBonus > 0) message += `• Бонус за скорость: +${Math.round(breakdown.timeBonus)}\n`;
+        if (breakdown.modeBonus > 0) message += `• Бонус за режим: +${breakdown.modeBonus}\n`;
+        if (breakdown.levelBonus > 0) message += `• Бонус за уровень: +${breakdown.levelBonus}\n`;
+        if (breakdown.errorPenalty > 0) message += `• Штраф за ошибки: -${breakdown.errorPenalty}\n`;
+        if (breakdown.hintPenalty > 0) message += `• Штраф за подсказку: -${breakdown.hintPenalty}\n`;
+        message += `• Множитель точности: ×${breakdown.accuracyMultiplier.toFixed(2)}\n`;
+        if (breakdown.perfectBonus > 0) message += `• 🌟 ИДЕАЛЬНАЯ ИГРА: +${breakdown.perfectBonus}\n`;
+        if (breakdown.speedStreakBonus > 0) message += `• ⚡ СУПЕР-СКОРОСТЬ: +${breakdown.speedStreakBonus}\n`;
+    }
+
+    showMessage(message);
 
     // Обновляем таблицу рекордов
     updateLeaderboard(gameState.currentUser, score, gameState.level);
@@ -664,15 +683,81 @@ function gameOver() {
     document.getElementById('hint-btn').disabled = true;
 }
 
-// Расчет очков
+// Расчет очков (улучшенная формула)
 function calculateScore() {
-    const baseScore = gameState.level * 100;
-    const timeBonus = Math.max(0, 300 - gameState.time) * 2;
-    const errorPenalty = gameState.errors * 50;
-    const hintPenalty = gameState.hintUsed ? 100 : 0;
-    const accuracyBonus = Math.round((gameState.currentMove / gameState.maxMoves) * 200);
+    // ═══════════════════════════════════════
+    // 1. Базовые очки за уровень
+    // ═══════════════════════════════════════
+    const baseScore = gameState.level * 200;
 
-    return baseScore + timeBonus - errorPenalty - hintPenalty + accuracyBonus;
+    // ═══════════════════════════════════════
+    // 2. Бонус за время (быстрое прохождение)
+    // ═══════════════════════════════════════
+    const idealTime = 60 * gameState.level; // Идеальное время растет с уровнем
+    const timeBonus = Math.max(0, (idealTime - gameState.time) * 3);
+
+    // ═══════════════════════════════════════
+    // 3. Множитель точности
+    // ═══════════════════════════════════════
+    const accuracy = (gameState.currentMove / gameState.maxMoves) * 100;
+    const accuracyMultiplier = 1 + (accuracy / 100);
+
+    // ═══════════════════════════════════════
+    // 4. Прогрессивный штраф за ошибки
+    // ═══════════════════════════════════════
+    const errorPenalties = [0, 30, 80, 150];
+    const errorPenalty = errorPenalties[gameState.errors] || 0;
+
+    // ═══════════════════════════════════════
+    // 5. Штраф за подсказку
+    // ═══════════════════════════════════════
+    const hintPenalty = gameState.hintUsed ? 100 : 0;
+
+    // ═══════════════════════════════════════
+    // 6. Бонус за режим (вслепую сложнее!)
+    // ═══════════════════════════════════════
+    const modeBonus = gameState.mode === 'blindfold' ? 150 : 0;
+
+    // ═══════════════════════════════════════
+    // 7. Бонус за идеальное прохождение
+    // ═══════════════════════════════════════
+    const perfectBonus = (gameState.errors === 0 && !gameState.hintUsed) ? 500 : 0;
+
+    // ═══════════════════════════════════════
+    // 8. Бонус за супер-скорость
+    // ═══════════════════════════════════════
+    const speedStreakBonus = (gameState.time < idealTime / 2) ? 300 : 0;
+
+    // ═══════════════════════════════════════
+    // 9. Бонус за высокий уровень
+    // ═══════════════════════════════════════
+    const levelBonus = Math.max(0, (gameState.level - 3)) * 100;
+
+    // ═══════════════════════════════════════
+    // ФИНАЛЬНЫЙ РАСЧЕТ
+    // ═══════════════════════════════════════
+    let subtotal = baseScore + timeBonus + modeBonus + levelBonus -
+        errorPenalty - hintPenalty;
+    subtotal = subtotal * accuracyMultiplier;
+    subtotal = subtotal + perfectBonus + speedStreakBonus;
+
+    const finalScore = Math.max(0, Math.round(subtotal));
+
+    // Сохраняем детали для отображения
+    gameState.lastScoreBreakdown = {
+        baseScore,
+        timeBonus,
+        accuracyMultiplier,
+        errorPenalty,
+        hintPenalty,
+        modeBonus,
+        perfectBonus,
+        speedStreakBonus,
+        levelBonus,
+        finalScore
+    };
+
+    return finalScore;
 }
 
 // Регистрация пользователя
@@ -704,19 +789,27 @@ function updatePlayerDisplay() {
 function updateLeaderboard(user, score, level) {
     let leaderboard = JSON.parse(localStorage.getItem('chessTrainerLeaderboard') || '[]');
 
-    leaderboard.push({
+    // Сохраняем полную информацию о результате
+    const entry = {
         user: user,
         score: score,
         level: level,
         date: new Date().toLocaleDateString(),
-        time: gameState.time
-    });
+        time: gameState.time,
+        mode: gameState.mode,
+        errors: gameState.errors,
+        hintUsed: gameState.hintUsed,
+        accuracy: Math.round((gameState.currentMove / gameState.maxMoves) * 100),
+        isPerfect: gameState.errors === 0 && !gameState.hintUsed
+    };
+
+    leaderboard.push(entry);
 
     // Сортируем по убыванию очков
     leaderboard.sort((a, b) => b.score - a.score);
 
-    // Ограничиваем топ-10
-    leaderboard = leaderboard.slice(0, 10);
+    // Ограничиваем топ-20 (больше записей для истории)
+    leaderboard = leaderboard.slice(0, 20);
 
     localStorage.setItem('chessTrainerLeaderboard', JSON.stringify(leaderboard));
     loadLeaderboard();
@@ -733,13 +826,46 @@ function loadLeaderboard() {
         return;
     }
 
-    leaderboard.forEach((entry, index) => {
+    // Показываем только топ-10 в компактном режиме
+    const topEntries = leaderboard.slice(0, 10);
+
+    topEntries.forEach((entry, index) => {
         const item = document.createElement('div');
         item.className = 'leaderboard-item';
+
+        // Медали для топ-3
+        let medal = '';
+        if (index === 0) medal = '🥇 ';
+        else if (index === 1) medal = '🥈 ';
+        else if (index === 2) medal = '🥉 ';
+
+        // Иконки достижений
+        let badges = '';
+        if (entry.isPerfect) badges += '⭐ ';
+        if (entry.mode === 'blindfold') badges += '😎 ';
+        if (entry.accuracy === 100) badges += '🎯 ';
+
+        // Форматирование времени
+        const minutes = Math.floor(entry.time / 60);
+        const seconds = entry.time % 60;
+        const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
         item.innerHTML = `
-            <span>${index + 1}. ${entry.user}</span>
-            <span>${entry.score} (ур. ${entry.level})</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span style="font-weight: bold;">${medal}${index + 1}. ${entry.user}</span>
+                <span style="color: #FFD700; font-weight: bold;">${entry.score} ${badges}</span>
+            </div>
+            <div style="font-size: 0.8em; color: rgba(255,255,255,0.7); margin-top: 3px;">
+                Уровень ${entry.level} • ${timeStr} • ${entry.accuracy}% точность
+            </div>
         `;
+
+        // Добавляем специальный стиль для топ-3
+        if (index < 3) {
+            item.style.background = 'rgba(255, 215, 0, 0.1)';
+            item.style.borderLeft = '3px solid #FFD700';
+        }
+
         leaderboardList.appendChild(item);
     });
 }
