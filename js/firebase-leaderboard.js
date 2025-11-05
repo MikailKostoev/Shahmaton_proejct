@@ -10,7 +10,11 @@ import {
     orderBy, 
     limit, 
     onSnapshot,
-    getDocs 
+    getDocs,
+    where,
+    doc,
+    setDoc,
+    deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
 
 let db = null;
@@ -57,6 +61,10 @@ export async function saveScoreToFirestore(user, userId, score, level, gameData)
 
         const leaderboardRef = collection(db, 'leaderboard');
         
+        // Проверяем, есть ли уже рекорд этого пользователя
+        const userQuery = query(leaderboardRef, where('userId', '==', userId));
+        const existingDocs = await getDocs(userQuery);
+        
         const entry = {
             user: user,
             userId: userId,
@@ -72,8 +80,45 @@ export async function saveScoreToFirestore(user, userId, score, level, gameData)
             isPerfect: gameData.errors === 0 && !gameData.hintUsed
         };
 
-        const docRef = await addDoc(leaderboardRef, entry);
-        console.log('✅ Рекорд сохранен в Firestore с ID:', docRef.id);
+        if (!existingDocs.empty) {
+            // Находим текущий лучший рекорд пользователя
+            let bestDoc = null;
+            let bestScore = -1;
+            
+            existingDocs.forEach((doc) => {
+                const data = doc.data();
+                if (data.score > bestScore) {
+                    bestScore = data.score;
+                    bestDoc = doc;
+                }
+            });
+            
+            // Если новый рекорд лучше - обновляем, если хуже - не сохраняем
+            if (score > bestScore) {
+                await setDoc(doc(db, 'leaderboard', bestDoc.id), entry);
+                console.log('✅ Рекорд обновлен (лучше предыдущего):', score, '>', bestScore);
+                
+                // Удаляем остальные записи этого пользователя
+                const docsToDelete = [];
+                existingDocs.forEach((d) => {
+                    if (d.id !== bestDoc.id) {
+                        docsToDelete.push(d);
+                    }
+                });
+                
+                for (const docToDelete of docsToDelete) {
+                    await deleteDoc(doc(db, 'leaderboard', docToDelete.id));
+                    console.log('🗑️ Удалена старая запись:', docToDelete.id);
+                }
+            } else {
+                console.log('⚠️ Новый рекорд хуже существующего:', score, '<=', bestScore);
+                console.log('💾 Рекорд НЕ сохранен');
+            }
+        } else {
+            // Первый рекорд пользователя - просто добавляем
+            const docRef = await addDoc(leaderboardRef, entry);
+            console.log('✅ Первый рекорд пользователя сохранен с ID:', docRef.id);
+        }
         
         return true;
     } catch (error) {
@@ -165,8 +210,25 @@ function displayLeaderboard(leaderboard) {
         return;
     }
 
+    // Группируем по userId и выбираем только лучший результат каждого
+    const userBestScores = new Map();
+    
+    leaderboard.forEach(entry => {
+        const userId = entry.userId || entry.user; // fallback на user если нет userId
+        
+        if (!userBestScores.has(userId) || entry.score > userBestScores.get(userId).score) {
+            userBestScores.set(userId, entry);
+        }
+    });
+    
+    // Преобразуем обратно в массив и сортируем
+    const uniqueUserScores = Array.from(userBestScores.values());
+    uniqueUserScores.sort((a, b) => b.score - a.score);
+    
+    console.log('📊 Уникальных пользователей в таблице:', uniqueUserScores.length);
+
     // Показываем топ-10
-    const topEntries = leaderboard.slice(0, 10);
+    const topEntries = uniqueUserScores.slice(0, 10);
 
     topEntries.forEach((entry, index) => {
         const item = document.createElement('div');

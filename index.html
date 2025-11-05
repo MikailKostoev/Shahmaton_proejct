@@ -94,11 +94,6 @@
                 <div id="chessboard"></div>
             </div>
 
-            <!-- Текущий ход ПОД доской -->
-            <div class="current-player-bottom" id="current-player">
-                Текущий ход: <span id="player-side">белые</span>
-            </div>
-
             <!-- Нижние кнопки -->
             <div class="bottom-buttons">
                 <button class="btn-bottom btn-start" id="start-btn">Начать игру</button>
@@ -173,7 +168,7 @@
             mode: 'blindfold',
             level: 1,
             currentMove: 0,
-            maxMoves: 20,
+            maxMoves: 4,              // Изменено: 20 → 4 (быстрее проходить уровни)
             errors: 0,
             maxErrors: 3,
             time: 0,
@@ -181,16 +176,16 @@
             isPlaying: false,
             currentPosition: [],
             activePiece: null,
-            activePieceStartPos: null,
-            targetPiece: null,
+            targetPieces: [],         // НОВОЕ: массив целей вместо одной
             pieces: [],
             hintUsed: false,
             currentUser: null,
             userId: null,
-            currentPlayer: 'w',
-            debugMode: false
+            lastMove: null,           // НОВОЕ: сохраняем последний ход
+            debugMode: false,
+            lastScoreBreakdown: null  // СОХРАНЕНО: для детального подсчета
         };
-        console.log('🎮 gameState инициализирован');
+        console.log('🎮 gameState инициализирован (новая логика)');
 
         // Система загрузки
         window.loadingProgress = {

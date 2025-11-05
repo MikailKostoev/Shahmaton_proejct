@@ -372,7 +372,9 @@ async function handleLogout() {
 // ОТСЛЕЖИВАНИЕ СОСТОЯНИЯ АУТЕНТИФИКАЦИИ
 // ============================================
 function setupAuthStateObserver() {
-    onAuthStateChanged(auth, (user) => {
+    let previousUserId = null;
+
+    onAuthStateChanged(auth, async (user) => {
         const loginPrompt = document.getElementById('login-prompt');
         const userInfo = document.getElementById('user-info');
         const currentUserElement = document.getElementById('current-user');
@@ -387,11 +389,41 @@ function setupAuthStateObserver() {
             
             // Обновляем gameState
             if (window.gameState) {
+                const isUserChanged = previousUserId !== null && previousUserId !== user.uid;
+                
                 window.gameState.currentUser = displayName;
                 window.gameState.userId = user.uid;
+                
+                // Сбрасываем уровень на 1 при смене пользователя
+                if (isUserChanged) {
+                    console.log('🔄 Смена пользователя, сброс уровня и игры');
+                    
+                    // Останавливаем текущую игру если она идет
+                    if (window.gameState.isPlaying) {
+                        clearInterval(window.gameState.timerInterval);
+                        window.gameState.isPlaying = false;
+                        document.getElementById('start-btn').disabled = false;
+                        document.getElementById('hint-btn').disabled = true;
+                    }
+                    
+                    // Сбрасываем на 1 уровень
+                    window.gameState.level = 1;
+                    
+                    // Обновляем отображение
+                    if (window.updateDisplay) {
+                        window.updateDisplay();
+                    }
+                }
+                
+                // Загружаем прогресс пользователя из Firestore
+                await loadUserProgress(user.uid);
+                
+                previousUserId = user.uid;
+                
                 console.log('✅ gameState обновлен:', {
                     currentUser: window.gameState.currentUser,
-                    userId: window.gameState.userId
+                    userId: window.gameState.userId,
+                    level: window.gameState.level
                 });
             } else {
                 console.warn('⚠️ window.gameState еще не инициализирован!');
@@ -407,13 +439,34 @@ function setupAuthStateObserver() {
             
             // Обновляем gameState
             if (window.gameState) {
+                // Останавливаем игру если она идет
+                if (window.gameState.isPlaying) {
+                    clearInterval(window.gameState.timerInterval);
+                    window.gameState.isPlaying = false;
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('hint-btn').disabled = true;
+                }
+                
                 window.gameState.currentUser = null;
                 window.gameState.userId = null;
+                window.gameState.level = 1; // Сброс уровня при выходе
+                
+                if (window.updateDisplay) {
+                    window.updateDisplay();
+                }
             }
             
-            console.log('👤 Пользователь вышел');
+            previousUserId = null;
+            console.log('👤 Пользователь вышел, уровень сброшен на 1');
         }
     });
+}
+
+// Загрузка прогресса пользователя из Firestore
+async function loadUserProgress(userId) {
+    // Эта функция будет реализована позже для сохранения прогресса
+    // Пока просто сбрасываем на 1 при каждом входе
+    console.log('📊 Прогресс пользователя: level 1 (новый старт)');
 }
 
 // ============================================

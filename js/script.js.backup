@@ -18,15 +18,12 @@ const CHESS_PIECES = {
 // Используем глобальный объект
 let gameState = window.gameState;
 
-// Стандартный набор фигур для максимального уровня
-const STANDARD_PIECES = ['K', 'Q', 'R', 'R', 'N', 'B', 'B'];
-const COLORS = ['w', 'b'];
-
 // Инициализация игры
 document.addEventListener('DOMContentLoaded', function() {
     initializeBoard();
     setupEventListeners();
     loadLeaderboard();
+    updatePlayerDisplay();
     // Firebase Auth теперь управляет состоянием пользователя автоматически
 });
 
@@ -147,446 +144,377 @@ function resetGameState() {
     gameState.errors = 0;
     gameState.time = 0;
     gameState.hintUsed = false;
-    gameState.lastMove = null;
-    gameState.targetPieces = [];
+    gameState.currentPlayer = 'w';
     updateDisplay();
+    updatePlayerDisplay();
 }
 
-// ============================================
-// НОВЫЕ ФУНКЦИИ ПРОВЕРКИ АТАК (из Downloads/5)
-// ============================================
+// Генерация начальной позиции с учетом шахматных правил
+function generateInitialPosition() {
+    let maxAttempts = 100;
+    let attempt = 0;
+    let validPositionFound = false;
 
-// Проверка, атакует ли фигура другие фигуры
-function doesPieceAttackOthers(type, color, row, col) {
-    const tempPiece = {type: color + type, row: row, col: col};
-    
-    // Проверяем, атакует ли новая фигура какие-либо существующие
-    for (const piece of gameState.pieces) {
-        if (canAttack(tempPiece, piece)) {
-            return true;
+    while (!validPositionFound && attempt < maxAttempts) {
+        attempt++;
+        gameState.pieces = [];
+        gameState.currentPosition = [];
+
+        const numPieces = gameState.level + 1;
+
+        // Генерируем позицию без взаимодействий
+        if (generateNonInteractingPosition(numPieces)) {
+            // Теперь создаем ровно одно взаимодействие
+            if (createSingleInteraction()) {
+                validPositionFound = true;
+            }
         }
     }
-    
-    // Проверяем, атакуют ли существующие фигуры новую
-    for (const piece of gameState.pieces) {
-        if (canAttack(piece, tempPiece)) {
-            return true;
+
+    if (!validPositionFound) {
+        // Если не удалось создать идеальную позицию, создаем упрощенную
+        generateSimplePosition();
+    }
+}
+
+// Генерация позиции, где фигуры НЕ взаимодействуют друг с другом
+function generateNonInteractingPosition(numPieces) {
+    const pieceTypes = ['R', 'N', 'B', 'Q', 'K', 'P'];
+    const colors = ['w', 'b'];
+    let piecesAdded = 0;
+    let attempts = 0;
+    const maxAttempts = 500;
+
+    const tempPieces = [];
+
+    while (piecesAdded < numPieces && attempts < maxAttempts) {
+        attempts++;
+
+        const type = pieceTypes[Math.floor(Math.random() * pieceTypes.length)];
+        const color = piecesAdded === 0 ? gameState.currentPlayer : colors[Math.floor(Math.random() * colors.length)];
+
+        const row = Math.floor(Math.random() * 8);
+        const col = Math.floor(Math.random() * 8);
+
+        // Проверяем, что клетка свободна
+        if (tempPieces.some(p => p.row === row && p.col === col)) {
+            continue;
+        }
+
+        const piece = { type: color + type, row, col };
+
+        // Проверяем валидность позиции
+        if (!isPositionValid(piece, tempPieces)) {
+            continue;
+        }
+
+        // Проверяем, что новая фигура не взаимодействует с существующими
+        if (!hasAnyInteraction(piece, tempPieces)) {
+            tempPieces.push(piece);
+            piecesAdded++;
         }
     }
-    
-    return false;
-}
 
-// Универсальная проверка возможности атаки
-function canAttack(attacker, target) {
-    const attackerType = attacker.type[1];
-    
-    switch (attackerType) {
-        case 'P': return canPawnAttack(attacker, target);
-        case 'R': return canRookAttack(attacker, target);
-        case 'N': return canKnightAttack(attacker, target);
-        case 'B': return canBishopAttack(attacker, target);
-        case 'Q': return canQueenAttack(attacker, target);
-        case 'K': return canKingAttack(attacker, target);
-        default: return false;
-    }
-}
-
-// Проверка атаки пешки
-function canPawnAttack(pawn, target) {
-    const pawnColor = pawn.type[0];
-    const direction = pawnColor === 'w' ? -1 : 1;
-    return (target.row === pawn.row + direction) && 
-           (Math.abs(target.col - pawn.col) === 1);
-}
-
-// Проверка атаки ладьи
-function canRookAttack(rook, target) {
-    if (rook.row !== target.row && rook.col !== target.col) return false;
-    return isPathClear(rook, target);
-}
-
-// Проверка атаки коня
-function canKnightAttack(knight, target) {
-    const rowDiff = Math.abs(knight.row - target.row);
-    const colDiff = Math.abs(knight.col - target.col);
-    return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
-}
-
-// Проверка атаки слона
-function canBishopAttack(bishop, target) {
-    if (Math.abs(bishop.row - target.row) !== Math.abs(bishop.col - target.col)) return false;
-    return isPathClear(bishop, target);
-}
-
-// Проверка атаки ферзя
-function canQueenAttack(queen, target) {
-    return canRookAttack(queen, target) || canBishopAttack(queen, target);
-}
-
-// Проверка атаки короля
-function canKingAttack(king, target) {
-    const rowDiff = Math.abs(king.row - target.row);
-    const colDiff = Math.abs(king.col - target.col);
-    return rowDiff <= 1 && colDiff <= 1 && (rowDiff !== 0 || colDiff !== 0);
-}
-
-// Проверка, свободен ли путь между фигурами
-function isPathClear(piece1, piece2) {
-    const rowDiff = piece2.row - piece1.row;
-    const colDiff = piece2.col - piece1.col;
-    
-    const rowStep = rowDiff === 0 ? 0 : rowDiff / Math.abs(rowDiff);
-    const colStep = colDiff === 0 ? 0 : colDiff / Math.abs(colDiff);
-    
-    let currentRow = piece1.row + rowStep;
-    let currentCol = piece1.col + colStep;
-    
-    while (currentRow !== piece2.row || currentCol !== piece2.col) {
-        if (isCellOccupied(currentRow, currentCol)) {
-            return false;
-        }
-        currentRow += rowStep;
-        currentCol += colStep;
-    }
-    
+    if (piecesAdded === numPieces) {
+        gameState.pieces = tempPieces.map(p => ({...p }));
         return true;
     }
 
-// Получение ценности фигуры
-function getPieceValue(pieceType) {
-    switch (pieceType) {
-        case 'Q': return 9;
-        case 'R': return 5;
-        case 'B': return 3;
-        case 'N': return 3;
-        case 'K': return 0;
-        default: return 0;
+    return false;
+}
+
+// Создание ровно одного взаимодействия между фигурами
+function createSingleInteraction() {
+    // Находим фигуру текущего игрока для активной фигуры
+    const playerPieces = gameState.pieces.filter(p => p.type[0] === gameState.currentPlayer);
+
+    if (playerPieces.length === 0) {
+        return false;
     }
-}
 
-// Вычисление расстояния между фигурами
-function calculateDistance(piece1, piece2) {
-    return Math.abs(piece1.row - piece2.row) + Math.abs(piece1.col - piece2.col);
-}
+    // Перебираем фигуры игрока
+    for (let activePiece of playerPieces) {
+        // Получаем все возможные ходы этой фигуры
+        const possibleMoves = ChessRules.getPossibleMoves(activePiece, activePiece.row, activePiece.col, gameState.pieces);
 
-// Функция для перемешивания массива
-function shuffleArray(array) {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+        // Ищем пустые клетки, откуда можно атаковать ровно одну фигуру
+        for (let move of possibleMoves) {
+            // Проверяем, есть ли на этой клетке фигура
+            if (gameState.pieces.some(p => p.row === move.row && p.col === move.col)) {
+                continue;
+            }
+
+            // Сохраняем старую позицию
+            const oldRow = activePiece.row;
+            const oldCol = activePiece.col;
+
+            // Временно перемещаем фигуру
+            activePiece.row = move.row;
+            activePiece.col = move.col;
+
+            // Проверяем взаимодействия
+            const interactions = ChessRules.getPieceInteractions(activePiece, gameState.pieces);
+            const validInteractions = interactions.filter(i =>
+                i.target !== activePiece && i.target.type[0] !== activePiece.type[0]
+            );
+
+            if (validInteractions.length === 1) {
+                // Нашли позицию с ровно одним взаимодействием!
+                gameState.activePiece = activePiece;
+                gameState.targetPiece = validInteractions[0].target;
+                // Сохраняем начальную позицию для анимации
+                gameState.activePieceStartPos = { row: oldRow, col: oldCol };
+                return true;
+            }
+
+            // Возвращаем фигуру на место
+            activePiece.row = oldRow;
+            activePiece.col = oldCol;
+        }
     }
-    return newArray;
+
+    return false;
 }
 
-// Получение фигуры по координатам
-function getPieceAt(row, col) {
-    return gameState.pieces.find(piece => piece.row === row && piece.col === col);
-}
-
-// Генерация начальной позиции (УПРОЩЕННАЯ из Downloads/5)
-function generateInitialPosition() {
+// Упрощенная генерация позиции (запасной вариант)
+function generateSimplePosition() {
     gameState.pieces = [];
-    gameState.currentPosition = [];
+    const numPieces = gameState.level + 1;
 
-    // Определяем количество фигур в зависимости от уровня
-    const numPieces = Math.min(gameState.level + 1, 7);
-    
-    // Создаем массив доступных фигур
-    let availablePieces = [...STANDARD_PIECES];
-    
-    // Если количество фигур меньше стандартного набора, выбираем случайное подмножество
-    if (numPieces < availablePieces.length) {
-        availablePieces = shuffleArray([...STANDARD_PIECES]).slice(0, numPieces);
-    }
-    
-    // Для 6-го уровня используем все стандартные фигуры
-    if (gameState.level === 6) {
-        availablePieces = [...STANDARD_PIECES];
-    }
+    // Размещаем активную фигуру в начальной позиции
+    const startRow = 3;
+    const startCol = 3;
+    const activePiece = {
+        type: gameState.currentPlayer + 'N', // Используем коня для простоты
+        row: 5, // Конечная позиция после хода
+        col: 4
+    };
+    gameState.pieces.push(activePiece);
+    gameState.activePiece = activePiece;
 
-    // Расставляем фигуры так, чтобы они не взаимодействовали
-    for (let i = 0; i < availablePieces.length; i++) {
-        const type = availablePieces[i];
-        const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-        
-        let row, col;
-        let attempts = 0;
-        let validPosition = false;
-        
-        do {
-            row = Math.floor(Math.random() * 8);
-            col = Math.floor(Math.random() * 8);
-            
-            // Для слонов проверяем разнопольность
-            if (type === 'B' && i > 0) {
-                const bishops = gameState.pieces.filter(p => p.type[1] === 'B');
-                if (bishops.length > 0) {
-                    const firstBishop = bishops[0];
-                    const firstBishopColor = (firstBishop.row + firstBishop.col) % 2;
-                    const newBishopColor = (row + col) % 2;
-                    
-                    if (firstBishopColor === newBishopColor) {
-                        continue;
-                    }
-                }
-            }
-            
-            // Проверяем свободность клетки и отсутствие атак
-            if (!isCellOccupied(row, col) && !doesPieceAttackOthers(type, color, row, col)) {
-                validPosition = true;
-            }
-            
-            attempts++;
-            
-            // Если не удалось найти позицию, начинаем заново
-            if (attempts > 100) {
-                gameState.pieces = [];
-                i = -1;
-                break;
-            }
-        } while (!validPosition && attempts <= 100);
-        
-        if (validPosition) {
-            const piece = { type: color + type, row: row, col: col };
-            gameState.pieces.push(piece);
-            gameState.currentPosition.push({...piece});
-        }
-    }
+    // Сохраняем начальную позицию для анимации
+    gameState.activePieceStartPos = { row: startRow, col: startCol };
 
-    // Выбираем случайную активную фигуру
-    if (gameState.pieces.length > 0) {
-        gameState.activePiece = gameState.pieces[Math.floor(Math.random() * gameState.pieces.length)];
+    // Размещаем целевую фигуру в зоне атаки коня
+    const targetColor = gameState.currentPlayer === 'w' ? 'b' : 'w';
+    const targetPiece = {
+        type: targetColor + 'P',
+        row: 7,
+        col: 5
+    };
+    gameState.pieces.push(targetPiece);
+    gameState.targetPiece = targetPiece;
+
+    // Добавляем остальные фигуры в безопасных местах
+    const safeCells = [
+        { row: 0, col: 0 }, { row: 0, col: 7 }, { row: 1, col: 1 }
+    ];
+
+    for (let i = 2; i < numPieces && i - 2 < safeCells.length; i++) {
+        const cell = safeCells[i - 2];
+        const color = Math.random() < 0.5 ? 'w' : 'b';
+        gameState.pieces.push({
+            type: color + 'P',
+            row: cell.row,
+            col: cell.col
+        });
     }
-    
-    console.log('✅ Позиция сгенерирована:', gameState.pieces.length, 'фигур');
 }
 
-// Генерация целевых фигур после хода (НОВАЯ ЛОГИКА из Downloads/5)
-function generateTargetPieces() {
-    if (!gameState.lastMove) return;
-    
-    const { from, to } = gameState.lastMove;
-    const movedPiece = getPieceAt(to.row, to.col);
-    
-    if (!movedPiece) return;
-    
-    // Находим все атакованные фигуры
-    const attackedPieces = [];
-    for (const piece of gameState.pieces) {
-        if (piece !== movedPiece && canAttack(movedPiece, piece)) {
-            attackedPieces.push(piece);
-        }
-    }
-    
-    if (attackedPieces.length > 0) {
-        // Находим максимальную ценность
-        let maxValue = -1;
-        for (const piece of attackedPieces) {
-            const value = getPieceValue(piece.type[1]);
-            if (value > maxValue) {
-                maxValue = value;
-            }
-        }
-        
-        // Находим минимальное расстояние среди ценных фигур
-        let minDistance = Infinity;
-        for (const piece of attackedPieces) {
-            if (getPieceValue(piece.type[1]) === maxValue) {
-                const distance = calculateDistance(movedPiece, piece);
-                if (distance < minDistance) {
-                    minDistance = distance;
+// Проверка валидности позиции фигуры
+function isPositionValid(piece, existingPieces) {
+    // Проверка 1: Короли не должны стоять рядом друг с другом
+    if (piece.type[1] === 'K') {
+        for (let otherPiece of existingPieces) {
+            if (otherPiece.type[1] === 'K') {
+                const rowDiff = Math.abs(piece.row - otherPiece.row);
+                const colDiff = Math.abs(piece.col - otherPiece.col);
+                if (rowDiff <= 1 && colDiff <= 1) {
+                    return false;
                 }
             }
         }
-        
-        // Выбираем все фигуры с макс. ценностью и мин. расстоянием
-        gameState.targetPieces = attackedPieces.filter(piece => 
-            getPieceValue(piece.type[1]) === maxValue && 
-            calculateDistance(movedPiece, piece) === minDistance
+    }
+
+    // Проверка 2: Слоны должны быть на разнопольных клетках
+    if (piece.type[1] === 'B') {
+        const pieceColor = (piece.row + piece.col) % 2; // 0 = темная, 1 = светлая
+
+        for (let otherPiece of existingPieces) {
+            if (otherPiece.type[1] === 'B' && otherPiece.type[0] === piece.type[0]) {
+                const otherColor = (otherPiece.row + otherPiece.col) % 2;
+                if (pieceColor === otherColor) {
+                    return false; // Слоны одного цвета должны быть на разных полях
+                }
+            }
+        }
+    }
+
+    // Проверка 3: Пешки не должны быть на крайних горизонталях
+    if (piece.type[1] === 'P') {
+        if (piece.row === 0 || piece.row === 7) {
+            return false;
+        }
+    }
+
+    // Проверка 4: Не должно быть слишком много королей одного цвета
+    if (piece.type[1] === 'K') {
+        const sameColorKings = existingPieces.filter(p =>
+            p.type[1] === 'K' && p.type[0] === piece.type[0]
         );
-    } else {
-        // Если нет атакованных, выбираем случайную
-        const otherPieces = gameState.pieces.filter(p => p !== movedPiece);
-        if (otherPieces.length > 0) {
-            gameState.targetPieces = [otherPieces[Math.floor(Math.random() * otherPieces.length)]];
-        } else {
-            gameState.targetPieces = [];
+        if (sameColorKings.length >= 1) {
+            return false; // Только один король каждого цвета
         }
     }
-    
-    console.log('🎯 Целевые фигуры:', gameState.targetPieces.length);
+
+    return true;
 }
 
-// Генерация возможных ходов с взаимодействиями
-function generateInteractiveMoves(piece) {
-    const moves = [];
-    const possibleMoves = generatePossibleMoves(piece);
-    
-    for (const move of possibleMoves) {
-        const originalRow = piece.row;
-        const originalCol = piece.col;
-        piece.row = move.row;
-        piece.col = move.col;
-        
-        let attackedCount = 0;
-        for (const otherPiece of gameState.pieces) {
-            if (otherPiece !== piece && canAttack(piece, otherPiece)) {
-                attackedCount++;
-            }
-        }
-        
-        if (attackedCount > 0) {
-            moves.push(move);
-        }
-        
-        piece.row = originalRow;
-        piece.col = originalCol;
-    }
-    
-    return moves;
-}
-
-// Генерация всех возможных ходов для фигуры
-function generatePossibleMoves(piece) {
-    const moves = [];
-    const pieceType = piece.type[1];
-
-    switch (pieceType) {
-        case 'P':
-            generatePawnMoves(piece, moves);
-            break;
-        case 'R':
-            generateRookMoves(piece, moves);
-            break;
-        case 'N':
-            generateKnightMoves(piece, moves);
-            break;
-        case 'B':
-            generateBishopMoves(piece, moves);
-            break;
-        case 'Q':
-            generateQueenMoves(piece, moves);
-            break;
-        case 'K':
-            generateKingMoves(piece, moves);
-            break;
+// Проверка, есть ли у фигуры взаимодействия с другими
+function hasAnyInteraction(piece, existingPieces) {
+    if (existingPieces.length === 0) {
+        return false;
     }
 
-    return moves.filter(move => !isCellOccupied(move.row, move.col));
-}
+    // Проверяем, атакует ли эта фигура другие
+    const moves = ChessRules.getPossibleMoves(piece, piece.row, piece.col, existingPieces);
+    for (let move of moves) {
+        if (existingPieces.some(p => p.row === move.row && p.col === move.col)) {
+            return true; // Фигура атакует другую фигуру
+        }
+    }
 
-// Генерация ходов пешки
-function generatePawnMoves(pawn, moves) {
-    const pawnColor = pawn.type[0];
-    const direction = pawnColor === 'w' ? -1 : 1;
-    
-    if (!isCellOccupied(pawn.row + direction, pawn.col)) {
-        moves.push({row: pawn.row + direction, col: pawn.col});
-        
-        if ((pawnColor === 'w' && pawn.row === 6) || (pawnColor === 'b' && pawn.row === 1)) {
-            if (!isCellOccupied(pawn.row + 2 * direction, pawn.col)) {
-                moves.push({row: pawn.row + 2 * direction, col: pawn.col});
+    // Проверяем, атакуют ли эту фигуру другие
+    for (let otherPiece of existingPieces) {
+        const otherMoves = ChessRules.getPossibleMoves(otherPiece, otherPiece.row, otherPiece.col, existingPieces);
+        for (let move of otherMoves) {
+            if (move.row === piece.row && move.col === piece.col) {
+                return true; // Фигуру атакует другая фигура
             }
         }
     }
-    
-    for (const colOffset of [-1, 1]) {
-        const newCol = pawn.col + colOffset;
-        if (newCol >= 0 && newCol < 8 && isCellOccupied(pawn.row + direction, newCol)) {
-            moves.push({row: pawn.row + direction, col: newCol});
-        }
-    }
+
+    return false;
 }
 
-// Генерация ходов ладьи
-function generateRookMoves(rook, moves) {
-    const directions = [
-        {row: -1, col: 0}, {row: 1, col: 0},
-        {row: 0, col: -1}, {row: 0, col: 1}
-    ];
-    generateSlidingMoves(rook, moves, directions);
-}
-
-// Генерация ходов коня
-function generateKnightMoves(knight, moves) {
-    const knightMoves = [
-        {row: -2, col: -1}, {row: -2, col: 1},
-        {row: -1, col: -2}, {row: -1, col: 2},
-        {row: 1, col: -2}, {row: 1, col: 2},
-        {row: 2, col: -1}, {row: 2, col: 1}
-    ];
-    
-    for (const move of knightMoves) {
-        const newRow = knight.row + move.row;
-        const newCol = knight.col + move.col;
-        if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-            moves.push({row: newRow, col: newCol});
-        }
-    }
-}
-
-// Генерация ходов слона
-function generateBishopMoves(bishop, moves) {
-    const directions = [
-        {row: -1, col: -1}, {row: -1, col: 1},
-        {row: 1, col: -1}, {row: 1, col: 1}
-    ];
-    generateSlidingMoves(bishop, moves, directions);
-}
-
-// Генерация ходов ферзя
-function generateQueenMoves(queen, moves) {
-    generateRookMoves(queen, moves);
-    generateBishopMoves(queen, moves);
-}
-
-// Генерация ходов короля
-function generateKingMoves(king, moves) {
-    for (let rowOffset = -1; rowOffset <= 1; rowOffset++) {
-        for (let colOffset = -1; colOffset <= 1; colOffset++) {
-            if (rowOffset === 0 && colOffset === 0) continue;
-            
-            const newRow = king.row + rowOffset;
-            const newCol = king.col + colOffset;
-            
-            if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-                moves.push({row: newRow, col: newCol});
-            }
-        }
-    }
-}
-
-// Генерация скользящих ходов (для ладьи, слона, ферзя)
-function generateSlidingMoves(piece, moves, directions) {
-    for (const direction of directions) {
-        let newRow = piece.row + direction.row;
-        let newCol = piece.col + direction.col;
-        
-        while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-            if (!isCellOccupied(newRow, newCol)) {
-                moves.push({row: newRow, col: newCol});
-            } else {
-                break;
-            }
-            newRow += direction.row;
-            newCol += direction.col;
-        }
-    }
-}
-
-// ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================
-
-// Проверка занятости клетки (сохранена из старого кода)
+// Проверка занятости клетки
 function isCellOccupied(row, col) {
     return gameState.pieces.some(piece => piece.row === row && piece.col === col);
 }
 
+// Генерация новой позиции с одним взаимодействием для следующего хода
+function generateNextPosition() {
+    let maxAttempts = 50;
+    let attempt = 0;
+
+    // Сохраняем текущую угаданную фигуру как новую активную
+    const newActivePiece = gameState.targetPiece;
+
+    while (attempt < maxAttempts) {
+        attempt++;
+
+        // Получаем возможные ходы новой активной фигуры
+        const possibleMoves = ChessRules.getPossibleMoves(newActivePiece, newActivePiece.row, newActivePiece.col, gameState.pieces);
+
+        // Перебираем возможные ходы
+        for (let move of possibleMoves) {
+            // Пропускаем занятые клетки
+            if (gameState.pieces.some(p => p.row === move.row && p.col === move.col)) {
+                continue;
+            }
+
+            // Сохраняем старую позицию
+            const oldRow = newActivePiece.row;
+            const oldCol = newActivePiece.col;
+
+            // Временно перемещаем фигуру
+            newActivePiece.row = move.row;
+            newActivePiece.col = move.col;
+
+            // Проверяем количество взаимодействий
+            const interactions = ChessRules.getPieceInteractions(newActivePiece, gameState.pieces);
+            const validInteractions = interactions.filter(i =>
+                i.target !== newActivePiece && i.target.type[0] !== newActivePiece.type[0]
+            );
+
+            // Также проверяем, что другие фигуры не взаимодействуют между собой
+            let otherInteractions = 0;
+            for (let piece of gameState.pieces) {
+                if (piece === newActivePiece) continue;
+
+                const pieceInteractions = ChessRules.getPieceInteractions(piece, gameState.pieces);
+                for (let interaction of pieceInteractions) {
+                    if (interaction.target !== newActivePiece && interaction.target !== piece) {
+                        otherInteractions++;
+                    }
+                }
+            }
+
+            if (validInteractions.length === 1 && otherInteractions === 0) {
+                // Идеальная позиция найдена!
+                gameState.activePiece = newActivePiece;
+                gameState.targetPiece = validInteractions[0].target;
+                // Сохраняем начальную позицию для анимации
+                gameState.activePieceStartPos = { row: oldRow, col: oldCol };
+                return true;
+            }
+
+            // Возвращаем на место
+            newActivePiece.row = oldRow;
+            newActivePiece.col = oldCol;
+        }
+    }
+
+    // Если не удалось найти позицию, генерируем новую с нуля
+    return false;
+}
+
+// Проверка корректности позиции (для отладки)
+function verifyPositionCorrectness() {
+    let interactionCount = 0;
+    let interactionDetails = [];
+
+    // Считаем взаимодействия активной фигуры
+    const activeInteractions = ChessRules.getPieceInteractions(gameState.activePiece, gameState.pieces);
+    const validActiveInteractions = activeInteractions.filter(i =>
+        i.target !== gameState.activePiece && i.target.type[0] !== gameState.activePiece.type[0]
+    );
+
+    interactionCount += validActiveInteractions.length;
+    interactionDetails.push(`Active piece (${gameState.activePiece.type}): ${validActiveInteractions.length} interactions`);
+
+    // Проверяем, что другие фигуры не взаимодействуют между собой
+    for (let piece of gameState.pieces) {
+        if (piece === gameState.activePiece) continue;
+
+        const pieceInteractions = ChessRules.getPieceInteractions(piece, gameState.pieces);
+        for (let interaction of pieceInteractions) {
+            if (interaction.target !== gameState.activePiece && interaction.target !== piece) {
+                interactionCount++;
+                interactionDetails.push(`Piece ${piece.type} at (${piece.row},${piece.col}) interacts with ${interaction.target.type}`);
+            }
+        }
+    }
+
+    if (gameState.debugMode) {
+        console.log('=== Position Verification ===');
+        console.log('Total interactions (should be 1):', interactionCount);
+        console.log('Details:', interactionDetails);
+        console.log('Active piece:', gameState.activePiece);
+        console.log('Target piece:', gameState.targetPiece);
+        console.log('===========================');
+    }
+
+    return interactionCount === 1;
+}
+
 // Краткий показ позиции
 function showPositionBriefly() {
+    // Проверяем корректность позиции
+    if (gameState.debugMode) {
+        verifyPositionCorrectness();
+    }
+
     if (gameState.mode === 'blindfold') {
         displayPosition();
         setTimeout(() => {
@@ -609,131 +537,72 @@ function displayPosition() {
     });
 }
 
-// Показать ход активной фигуры (ОБНОВЛЕННАЯ ЛОГИКА)
+// Показать ход активной фигуры по правилам шахмат
 function showActivePieceMove() {
     clearBoard();
 
-    // В режиме для начинающих показываем все фигуры
-    if (gameState.mode === 'beginner') {
-        displayPosition();
-    }
+    // Используем сохраненную начальную позицию
+    const startRow = gameState.activePieceStartPos ? gameState.activePieceStartPos.row : gameState.activePiece.row;
+    const startCol = gameState.activePieceStartPos ? gameState.activePieceStartPos.col : gameState.activePiece.col;
 
-    // Показываем активную фигуру на текущей позиции
-    const activeCell = getCell(gameState.activePiece.row, gameState.activePiece.col);
+    // Показываем активную фигуру на начальной позиции
+    const activeCell = getCell(startRow, startCol);
     activeCell.textContent = CHESS_PIECES[gameState.activePiece.type];
     activeCell.classList.add('piece-move');
     activeCell.classList.add(`piece-${gameState.activePiece.type[0] === 'w' ? 'white' : 'black'}`);
-
-    // Генерируем возможные ходы с взаимодействиями
-    const possibleMoves = generateInteractiveMoves(gameState.activePiece);
-    
-    if (possibleMoves.length > 0) {
-        const move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-
-        // Запоминаем ход для анимации
-        gameState.lastMove = {
-            from: { row: gameState.activePiece.row, col: gameState.activePiece.col },
-            to: { row: move.row, col: move.col }
-        };
 
     // Анимируем ход
     setTimeout(() => {
         activeCell.textContent = '';
         activeCell.classList.remove('piece-move');
 
-            const newCell = getCell(move.row, move.col);
+        // Показываем фигуру на новой позиции
+        const newCell = getCell(gameState.activePiece.row, gameState.activePiece.col);
         newCell.textContent = CHESS_PIECES[gameState.activePiece.type];
         newCell.classList.add('piece-move');
         newCell.classList.add(`piece-${gameState.activePiece.type[0] === 'w' ? 'white' : 'black'}`);
 
-            // Обновляем позицию фигуры
-            gameState.activePiece.row = move.row;
-            gameState.activePiece.col = move.col;
-
-            // Генерируем целевые фигуры
-            generateTargetPieces();
-
-            // Очищаем доску для угадывания (или показываем в режиме beginner)
+        // После анимации очищаем доску для угадывания
         setTimeout(() => {
-                if (gameState.mode === 'blindfold') {
             clearBoard();
-                } else {
+            if (gameState.mode === 'beginner') {
                 displayPosition();
             }
         }, 1000);
     }, 500);
-    } else {
-        // Если нет интерактивных ходов, делаем обычный
-        const regularMoves = ChessRules.getPossibleMoves(gameState.activePiece, gameState.activePiece.row, gameState.activePiece.col, gameState.pieces);
-        if (regularMoves.length > 0) {
-            const move = regularMoves[Math.floor(Math.random() * regularMoves.length)];
-            
-            gameState.lastMove = {
-                from: { row: gameState.activePiece.row, col: gameState.activePiece.col },
-                to: { row: move.row, col: move.col }
-            };
-            
-            setTimeout(() => {
-                activeCell.textContent = '';
-                activeCell.classList.remove('piece-move');
-
-                const newCell = getCell(move.row, move.col);
-                newCell.textContent = CHESS_PIECES[gameState.activePiece.type];
-                newCell.classList.add('piece-move');
-                newCell.classList.add(`piece-${gameState.activePiece.type[0] === 'w' ? 'white' : 'black'}`);
-
-                gameState.activePiece.row = move.row;
-                gameState.activePiece.col = move.col;
-
-                generateTargetPieces();
-
-                setTimeout(() => {
-                    if (gameState.mode === 'blindfold') {
-                        clearBoard();
-                    } else {
-                        displayPosition();
-                    }
-                }, 1000);
-            }, 500);
-        }
-    }
 }
 
-// Обработка клика по клетке (ОБНОВЛЕНА для множественных целей)
+// Обработка клика по клетке
 function handleCellClick(event) {
     if (!gameState.isPlaying) return;
 
     const row = parseInt(event.target.dataset.row);
     const col = parseInt(event.target.dataset.col);
 
-    // Проверяем, угадал ли игрок одну из целевых фигур
-    const isCorrect = gameState.targetPieces.some(piece => 
-        piece.row === row && piece.col === col
-    );
-
-    if (isCorrect) {
+    // Проверяем, угадал ли игрок целевую фигуру
+    if (row === gameState.targetPiece.row && col === gameState.targetPiece.col) {
         // Правильный ответ
-        showMessage('✅ Правильно!');
+        showMessage('Правильно!');
         gameState.currentMove++;
 
-        // Находим угаданную фигуру и делаем её активной
-        const guessedPiece = gameState.pieces.find(piece => 
-            piece.row === row && piece.col === col
-        );
-        
-        if (guessedPiece) {
-            gameState.activePiece = guessedPiece;
-        }
+        // Меняем игрока
+        gameState.currentPlayer = gameState.currentPlayer === 'w' ? 'b' : 'w';
+        updatePlayerDisplay();
 
         if (gameState.currentMove >= gameState.maxMoves) {
             levelComplete();
         } else {
+            // Генерируем следующую позицию с одним взаимодействием
+            if (!generateNextPosition()) {
+                // Если не удалось, создаем новую позицию с нуля
+                generateInitialPosition();
+            }
             showPositionBriefly();
         }
     } else {
         // Неправильный ответ
         gameState.errors++;
-        showMessage('❌ Неправильно! Попробуйте еще раз.');
+        showMessage('Неправильно! Попробуйте еще раз.');
 
         if (gameState.errors >= gameState.maxErrors) {
             gameOver();
@@ -743,7 +612,31 @@ function handleCellClick(event) {
     updateDisplay();
 }
 
-// Использование подсказки (ОБНОВЛЕНА для множественных целей)
+// Следующий ход
+function nextMove() {
+    gameState.currentMove++;
+
+    if (gameState.currentMove >= gameState.maxMoves) {
+        levelComplete();
+    } else {
+        // Меняем игрока
+        gameState.currentPlayer = gameState.currentPlayer === 'w' ? 'b' : 'w';
+        updatePlayerDisplay();
+
+        // Выбираем новую активную фигуру текущего игрока
+        const playerPieces = gameState.pieces.filter(p => p.type[0] === gameState.currentPlayer);
+        if (playerPieces.length > 0) {
+            gameState.activePiece = playerPieces[Math.floor(Math.random() * playerPieces.length)];
+            generateTargetPiece();
+            showPositionBriefly();
+        } else {
+            // Если у игрока не осталось фигур
+            gameOver();
+        }
+    }
+}
+
+// Использование подсказки
 function useHint() {
     if (gameState.hintUsed) {
         showMessage('Вы уже использовали подсказку на этом уровне!');
@@ -753,25 +646,14 @@ function useHint() {
     gameState.hintUsed = true;
     document.getElementById('hint-btn').disabled = true;
 
-    // Показываем все фигуры на доске
-    displayPosition();
-
-    // Подсвечиваем все возможные целевые фигуры
-    gameState.targetPieces.forEach(piece => {
-        const cell = getCell(piece.row, piece.col);
-        cell.classList.add('target');
-    });
+    // Показываем целевую фигуру
+    const targetCell = getCell(gameState.targetPiece.row, gameState.targetPiece.col);
+    targetCell.classList.add('target');
 
     setTimeout(() => {
+        targetCell.classList.remove('target');
         if (gameState.mode === 'blindfold') {
             clearBoard();
-        } else {
-            // В режиме для начинающих убираем подсветку, но фигуры остаются
-            gameState.targetPieces.forEach(piece => {
-                const cell = getCell(piece.row, piece.col);
-                cell.classList.remove('target');
-            });
-            displayPosition();
         }
     }, 3000);
 }
@@ -903,6 +785,15 @@ function calculateScore() {
     };
 
     return finalScore;
+}
+
+// Обновление отображения текущего игрока
+function updatePlayerDisplay() {
+    const playerSide = document.getElementById('player-side');
+    playerSide.textContent = gameState.currentPlayer === 'w' ? 'белые' : 'черные';
+    playerSide.style.color = gameState.currentPlayer === 'w' ? '#ffffff' : '#000000';
+    playerSide.style.textShadow = gameState.currentPlayer === 'w' ?
+        '1px 1px 2px rgba(0,0,0,0.8)' : '1px 1px 2px rgba(255,255,255,0.8)';
 }
 
 // Обновление таблицы рекордов (теперь использует Firestore)
@@ -1051,9 +942,6 @@ function updateDisplay() {
     document.getElementById('move').textContent = `${gameState.currentMove}/${gameState.maxMoves}`;
     document.getElementById('errors').textContent = `${gameState.errors}/${gameState.maxErrors}`;
 }
-
-// Делаем updateDisplay глобальной для firebase-auth.js
-window.updateDisplay = updateDisplay;
 
 function updateTimerDisplay() {
     const minutes = Math.floor(gameState.time / 60).toString().padStart(2, '0');
