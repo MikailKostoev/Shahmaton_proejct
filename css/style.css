@@ -5,12 +5,20 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+html {
+    background: linear-gradient(135deg, #1e5799, #207cca);
+    background-attachment: fixed;
+    overflow-x: hidden;
+}
+
 body {
     background: linear-gradient(135deg, #1e5799, #207cca);
+    background-attachment: fixed;
     color: white;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    overscroll-behavior: none;
 }
 
 
